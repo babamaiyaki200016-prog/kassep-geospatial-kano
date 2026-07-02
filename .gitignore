@@ -1,0 +1,35 @@
+# Large raster (13 GB)
+nga_women_of_reproductive_age_15_49_2020.tif
+
+# Raw data (CSV, Excel)
+general_healthcare_deprivation_kano.csv
+03_kassep_data_ADAPTED.xlsx
+dataset-outputs.csv
+
+# Shapefile components (optional – exclude if not needed)
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.xml
+
+# Downloaded OSM zip (optional)
+nga_health_facilities_shp.zip
+nga_health_facilities_osm.zip
+
+# RStudio project files
+.Rproj.user
+.Rhistory
+.RData
+.Rapp.history
+
+# Outputs (if you want to keep them, comment out the next line)
+# outputs/
+
+# System files
+.DS_Store
+Thumbs.db
+nga_health_facilities_osm/
+nga_health_facilities_shp.zip
+nga_health_facilities_osm.zip
