@@ -1,0 +1,7 @@
+"Variable","Source","Resolution","Year"
+"Maternal mortality data","KASSEP (verbal autopsy)","Point (GPS)","2023-2024"
+"Population denominator","WorldPop 2020 (women 15-49)","100m raster","2020"
+"Administrative boundaries","GRID3 Nigeria","Polygon (LGA/State)","2020"
+"EmOC access deprivation","IDEAMAPS (University of Glasgow)","100m grid (classified)","2020"
+"Health facilities","OpenStreetMap (OSM)","Point","2022"
+"Distance to facilities","Computed from OSM points","Continuous (km)","2022"
