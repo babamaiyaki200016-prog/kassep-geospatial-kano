@@ -189,70 +189,33 @@ create_grid_data <- function(cellsize_m, grid_name) {
 }
 
 # ----------------------------------------------------------------------------
-# 6. GENERATE GRIDS (2, 3, 5 and 10 km -- full resolution sweep for Table 2;
-#    only 5 km and 10 km carry the full covariate set needed for regression)
+# 6. GENERATE GRIDS (5 km and 10 km ONLY)
 # ----------------------------------------------------------------------------
 
-# Lightweight version for resolutions only used in the Table 2 sweep --
-# death counts only, matching create_grid_data()'s first step, without the
-# expensive population/deprivation/facility extraction those don't need.
-create_grid_deaths_only <- function(cellsize_m) {
-  grid <- st_make_grid(study_area, cellsize = cellsize_m, what = "polygons", square = TRUE)
-  grid_sf <- st_sf(geometry = grid) %>%
-    st_intersection(study_area) %>%
-    mutate(cell_id = row_number())
-  grid_sf$deaths <- lengths(st_intersects(grid_sf, points_utm))
-  grid_sf
-}
-
-grid_2km  <- create_grid_deaths_only(2000)
-grid_3km  <- create_grid_deaths_only(3000)
 grid_5km  <- create_grid_data(5000,  "5 km")
 grid_10km <- create_grid_data(10000, "10 km")
 grid_5km_filtered <- grid_5km %>% filter(deaths > 0)
 grid_10km_filtered <- grid_10km %>% filter(deaths > 0)
 
 # ----------------------------------------------------------------------------
-# 7. MORAN'S I (GRID OPTIMISATION) -- full sweep: 2/3/5/10 km x Queen/KNN5
+# 7. MORAN'S I (GRID OPTIMISATION)
 # ----------------------------------------------------------------------------
 
 moran_results <- data.frame()
-grid_candidates <- list(
-  list(grid_2km,  "2 km"),
-  list(grid_3km,  "3 km"),
-  list(grid_5km,  "5 km"),
-  list(grid_10km, "10 km")
-)
-for (g in grid_candidates) {
+for (g in list(list(grid_5km_filtered, "5 km"), list(grid_10km_filtered, "10 km"))) {
   sub <- g[[1]] %>% filter(deaths > 0)
   if (nrow(sub) < 3) next
   coords <- st_centroid(sub) %>% st_coordinates()
-
-  # Queen contiguity
-  nb_q <- poly2nb(sub, queen = TRUE)
-  listw_q_grid <- tryCatch(nb2listw(nb_q, style = "W", zero.policy = TRUE), error = function(e) NULL)
-  if (!is.null(listw_q_grid)) {
-    moran_q_grid <- tryCatch(moran.test(sub$deaths, listw_q_grid, zero.policy = TRUE), error = function(e) NULL)
-    if (!is.null(moran_q_grid)) {
-      moran_results <- rbind(moran_results,
-                             data.frame(grid = g[[2]], weight = "Queen", n_cells = nrow(sub),
-                                        moran_i = moran_q_grid$estimate[1],
-                                        p_value = moran_q_grid$p.value))
-    }
-  }
-
-  # KNN-5
-  k <- min(5, nrow(sub) - 1)
-  nb_knn <- knn2nb(knearneigh(coords, k = k))
+  nb_knn <- knn2nb(knearneigh(coords, k = 5))
   listw_knn <- nb2listw(nb_knn, style = "W")
   moran_knn <- moran.test(sub$deaths, listw_knn, zero.policy = TRUE)
   moran_results <- rbind(moran_results,
-                         data.frame(grid = g[[2]], weight = "KNN5", n_cells = nrow(sub),
+                         data.frame(grid = g[[2]], weight = "KNN5",
                                     moran_i = moran_knn$estimate[1],
                                     p_value = moran_knn$p.value))
 }
 write.csv(moran_results, "outputs/moran_comparison.csv", row.names = FALSE)
-cat("✅ Moran's I comparison saved (full 2/3/5/10km x Queen/KNN5 sweep).\n")
+cat("✅ Moran's I comparison saved.\n")
 
 # ----------------------------------------------------------------------------
 # 8. HOTSPOT DETECTION (Getis-Ord Gi*) on 5 km grid
@@ -343,95 +306,7 @@ write.csv(data.frame(
   moran_i = moran_res$estimate[1],
   p_value = moran_res$p.value
 ), "outputs/residual_moran.csv", row.names = FALSE)
-cat("✅ Regression Model 1 complete.\n")
-
-# ----------------------------------------------------------------------------
-# 10b. REGRESSION MODEL 2 (Enhanced: + facility density + urban)
-# ----------------------------------------------------------------------------
-
-reg_data_enhanced <- grid_5km_filtered %>%
-  filter(!is.na(mmr) & !is.na(deprivation_median) & !is.na(dist_health_km) &
-         !is.na(facility_count_5km) & !is.na(urban_lga) & pop_density > 0)
-coords_enh <- st_coordinates(st_centroid(reg_data_enhanced))
-reg_df_enh <- data.frame(
-  mmr = reg_data_enhanced$mmr,
-  depr = reg_data_enhanced$deprivation_median,
-  pop_dens = reg_data_enhanced$pop_density,
-  dist_km = reg_data_enhanced$dist_health_km,
-  facility_dens = reg_data_enhanced$facility_count_5km,
-  urban = reg_data_enhanced$urban_lga,
-  x = coords_enh[,1],
-  y = coords_enh[,2]
-)
-reg_df_enh <- na.omit(reg_df_enh)
-
-ols_enh <- lm(mmr ~ depr + pop_dens + dist_km + facility_dens + urban, data = reg_df_enh)
-res_enh <- tidy(ols_enh); res_enh$model <- "Enhanced"
-fit_enh <- glance(ols_enh)
-
-# VIF -- flags the distance/facility_dens collinearity reported in the manuscript
-vif_enh <- car::vif(ols_enh)
-write.csv(data.frame(predictor = names(vif_enh), vif = vif_enh), "outputs/table3b_vif_model2.csv", row.names = FALSE)
-
-coords_res_enh <- as.matrix(reg_df_enh[, c("x", "y")])
-nb_res_enh <- knn2nb(knearneigh(coords_res_enh, k = min(5, nrow(reg_df_enh) - 1)))
-listw_res_enh <- nb2listw(nb_res_enh, style = "W")
-moran_res_enh <- moran.test(residuals(ols_enh), listw_res_enh, zero.policy = TRUE)
-cat("✅ Regression Model 2 (enhanced) complete. n =", nrow(reg_df_enh), "\n")
-
-# ----------------------------------------------------------------------------
-# 10c. REGRESSION MODEL 3 (10 km sensitivity, same formula as Model 1)
-# ----------------------------------------------------------------------------
-
-reg_data_10km <- grid_10km_filtered %>%
-  filter(!is.na(mmr) & !is.na(deprivation_median) & !is.na(dist_health_km) & pop_density > 0)
-coords_10km_reg <- st_coordinates(st_centroid(reg_data_10km))
-reg_df_10km <- data.frame(
-  mmr = reg_data_10km$mmr,
-  depr = reg_data_10km$deprivation_median,
-  pop_dens = reg_data_10km$pop_density,
-  dist_km = reg_data_10km$dist_health_km,
-  x = coords_10km_reg[,1],
-  y = coords_10km_reg[,2]
-)
-reg_df_10km <- na.omit(reg_df_10km)
-
-ols_10km <- lm(mmr ~ depr + pop_dens + dist_km, data = reg_df_10km)
-res_10km <- tidy(ols_10km); res_10km$model <- "10km sensitivity"
-fit_10km <- glance(ols_10km)
-
-coords_res_10km <- as.matrix(reg_df_10km[, c("x", "y")])
-nb_res_10km <- knn2nb(knearneigh(coords_res_10km, k = min(5, nrow(reg_df_10km) - 1)))
-listw_res_10km <- nb2listw(nb_res_10km, style = "W")
-moran_res_10km <- moran.test(residuals(ols_10km), listw_res_10km, zero.policy = TRUE)
-cat("✅ Regression Model 3 (10km) complete. n =", nrow(reg_df_10km), "\n")
-
-# ----------------------------------------------------------------------------
-# 10d. COMBINE ALL THREE MODELS INTO THE EXISTING OUTPUT FILES
-#      (extends, rather than replaces, table3_regression_results.csv /
-#      model_fit_comparison.csv / residual_moran.csv from section 10 above)
-# ----------------------------------------------------------------------------
-
-all_models_tidy <- bind_rows(res1, res_enh, res_10km)
-write.csv(all_models_tidy, "outputs/table3_regression_results.csv", row.names = FALSE)
-
-all_models_fit <- data.frame(
-  model = c("Original", "Enhanced", "10km sensitivity"),
-  R2 = c(fit1$r.squared, fit_enh$r.squared, fit_10km$r.squared),
-  Adj_R2 = c(fit1$adj.r.squared, fit_enh$adj.r.squared, fit_10km$adj.r.squared),
-  F_statistic = c(fit1$statistic, fit_enh$statistic, fit_10km$statistic),
-  p_F = c(fit1$p.value, fit_enh$p.value, fit_10km$p.value),
-  n = c(nrow(reg_df), nrow(reg_df_enh), nrow(reg_df_10km))
-)
-write.csv(all_models_fit, "outputs/model_fit_comparison.csv", row.names = FALSE)
-
-all_models_residual_moran <- data.frame(
-  model = c("Original", "Enhanced", "10km sensitivity"),
-  moran_i = c(moran_res$estimate[1], moran_res_enh$estimate[1], moran_res_10km$estimate[1]),
-  p_value = c(moran_res$p.value, moran_res_enh$p.value, moran_res_10km$p.value)
-)
-write.csv(all_models_residual_moran, "outputs/residual_moran.csv", row.names = FALSE)
-cat("✅ All three regression models combined into table3/model_fit_comparison/residual_moran outputs.\n")
+cat("✅ Regression models complete.\n")
 
 # ----------------------------------------------------------------------------
 # 11. PREDICTIVE MAPPING & PRIORITY AREAS
