@@ -278,7 +278,9 @@ cat("✅ Moran's I comparison saved (full 2/3/5/10km x Queen/KNN5 sweep).\n")
 coords_5km <- st_centroid(grid_5km_filtered) %>% st_coordinates()
 nb_knn5 <- knn2nb(knearneigh(coords_5km, k = 5))
 listw_knn5 <- nb2listw(nb_knn5, style = "W")
-gi <- localG(grid_5km_filtered$deaths, listw_knn5, zero.policy = TRUE)
+# Gi* (own count included): include.self() adds each cell to its own neighbour set.
+# (Earlier versions of this script used plain localG(), which computes Gi, not Gi*.)
+gi <- localG(grid_5km_filtered$deaths, nb2listw(include.self(nb_knn5), style = "W"), zero.policy = TRUE)
 grid_5km_filtered$gi_z <- as.numeric(gi)
 grid_5km_filtered <- grid_5km_filtered %>%
   mutate(hotspot = case_when(
@@ -311,7 +313,7 @@ write.csv(hotspot_summary, "outputs_n116/table2_hotspot_lgas.csv", row.names = F
 coords_10km_hot <- st_centroid(grid_10km_filtered) %>% st_coordinates()
 nb_knn5_10km <- knn2nb(knearneigh(coords_10km_hot, k = 5))
 listw_knn5_10km <- nb2listw(nb_knn5_10km, style = "W")
-gi_10km <- localG(grid_10km_filtered$deaths, listw_knn5_10km, zero.policy = TRUE)
+gi_10km <- localG(grid_10km_filtered$deaths, nb2listw(include.self(nb_knn5_10km), style = "W"), zero.policy = TRUE)
 grid_10km_filtered$gi_z <- as.numeric(gi_10km)
 grid_10km_filtered <- grid_10km_filtered %>%
   mutate(hotspot = case_when(
@@ -381,6 +383,13 @@ reg_df <- na.omit(reg_df)
 ols1 <- lm(mmr ~ depr + pop_dens + dist_km, data = reg_df)
 res1 <- tidy(ols1); res1$model <- "Original"
 write.csv(res1, "outputs_n116/table3_regression_results.csv", row.names = FALSE)
+
+# VIF for the Original (primary reported) model -- addresses Nosa's collinearity
+# question directly for the model actually reported, not the Enhanced model.
+vif1 <- car::vif(ols1)
+write.csv(data.frame(predictor = names(vif1), vif = as.numeric(vif1)),
+          "outputs_n116/table3c_vif_model1.csv", row.names = FALSE)
+cat("VIF (Original model, n116):\n"); print(vif1)
 
 fit1 <- glance(ols1)
 fit_df <- data.frame(model = "Original", R2 = fit1$r.squared, Adj_R2 = fit1$adj.r.squared, p_F = fit1$p.value)
@@ -489,6 +498,9 @@ cat("✅ All three regression models combined into table3/model_fit_comparison/r
 
 # ----------------------------------------------------------------------------
 # 11. PREDICTIVE MAPPING & PRIORITY AREAS
+# NOTE: retained for reproducibility only. After review (Re-draft V3) the revised manuscript
+# no longer reports the predicted-rate surface or upper-decile cells; the primary analysis is
+# aisha_option1_household_denominator.R (household-listing denominator).
 # ----------------------------------------------------------------------------
 
 coefs <- coef(ols1)

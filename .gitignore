@@ -33,3 +33,12 @@ Thumbs.db
 nga_health_facilities_osm/
 nga_health_facilities_shp.zip
 nga_health_facilities_osm.zip
+
+# Individual-level GPS and derived files (never commit)
+combined_points_n116.csv
+*.rds
+outputs_n116/aisha_figures/figS1_ideamaps_extent.png
+
+# Local scratch from the Gi* check (superseded by run_analysis_n116.R)
+run_analysis_n116_gistar.R
+outputs_n116_gistar/
