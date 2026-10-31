@@ -3,7 +3,8 @@
 # Retrospective wave only (n = 93 deaths). Deaths AND denominator both come
 # from the KASSEP household listing (household GPS), so surveyed cells with
 # no deaths are true zeros and the numerator/denominator mismatch is removed.
-#   A. Cell-level negative binomial / Poisson, log(surveyed live births) offset
+#   A. Cell-level Poisson, log(surveyed births) offset, LGA-clustered SE
+#      (overdispersion / zero checks: cell_model_diagnostics.R)
 #   B. Household-level logistic: maternal death in household vs. not, among
 #      households with >= 1 live birth, cluster-robust by EA
 # Writes to outputs_n116/aisha_option1/. Does not touch other outputs.
@@ -112,7 +113,6 @@ fit_cells <- function(cell_m, label) {
   f_main <- deaths ~ dist_km + census_share + offset(log(births))
   f_depr <- deaths ~ dist_km + census_share + depr + offset(log(births))
   pois <- glm(f_main, family = poisson, data = d)
-  nb   <- tryCatch(glm.nb(f_main, data = d), error = function(e) NULL)
   disp <- sum(residuals(pois, "pearson")^2) / pois$df.residual
   cat("Poisson Pearson dispersion:", round(disp, 2), "\n")
   tidy <- function(m, nm) {
@@ -122,7 +122,6 @@ fit_cells <- function(cell_m, label) {
                row.names = NULL)
   }
   out <- tidy(pois, "Poisson (LGA-cluster robust SE)")
-  if (!is.null(nb)) out <- rbind(out, tidy(nb, "Negative binomial (LGA-cluster robust SE)"))
   # Sensitivity: add deprivation, restricted to IDEAMAPS-covered cells
   dd <- d %>% filter(!is.na(depr))
   cat("Cells with IDEAMAPS coverage:", nrow(dd), " deaths in them:", sum(dd$deaths), "\n")
