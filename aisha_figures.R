@@ -29,22 +29,17 @@ f4 <- ggplot() +
 ggsave(file.path(OUT, "fig4_household_denominator_map.png"), f4, width = 7.5, height = 7.5, dpi = 300, bg = "white")
 
 # ---- Figure 5: forest plot ----
-rd <- function(f, lab) {
-  d <- read.csv(f); d <- d[d$term %in% c("dist_km", "census_share") &
-        d$model == "Poisson (LGA-cluster robust SE)", ]
-  d$spec <- paste(lab, "Poisson")
-  d %>% transmute(term, spec, est = RR, lo, hi)
-}
-cm <- bind_rows(rd("outputs_n116/aisha_option1/cell_model_5km.csv", "5 km cells,"),
-                rd("outputs_n116/aisha_option1/cell_model_10km.csv", "10 km cells,"))
+bym <- read.csv("outputs_n116/aisha_bym2/bym2_results.csv") %>% filter(model == "BYM2 + LGA intercept")
+cm <- bym %>% transmute(term = ifelse(term == "dist_c", "dist_km", "census_share"),
+                        spec = paste(sub("km", " km", grid), "cells, BYM2"), est = RR, lo, hi)
 hl <- read.csv("outputs_n116/aisha_individual/individual_models.csv") %>% filter(model == "Logistic (OR)") %>% rename(OR = est)
 hh <- hl %>% filter(term %in% c("dist_km", "census")) %>%
   transmute(term = ifelse(term == "census", "census_share", term), spec = "Women, logistic", est = OR, lo, hi)
 fd <- bind_rows(cm, hh) %>%
   mutate(term = factor(term, c("dist_km", "census_share"),
                        c("Distance to nearest facility (per km)", "Census strategy (vs sampling)")),
-         spec = factor(spec, rev(c("5 km cells, Poisson",
-                                   "10 km cells, Poisson", "Women, logistic"))),
+         spec = factor(spec, rev(c("5 km cells, BYM2",
+                                   "10 km cells, BYM2", "Women, logistic"))),
          lab = sprintf("%.2f (%.2f to %.2f)", est, lo, hi))
 f5 <- ggplot(fd, aes(est, spec)) +
   geom_vline(xintercept = 1, colour = INK2, linewidth = 0.4) +
@@ -53,9 +48,9 @@ f5 <- ggplot(fd, aes(est, spec)) +
   geom_text(aes(x = hi, label = lab), hjust = -0.1, size = 2.9, colour = INK2) +
   facet_wrap(~term, ncol = 1, scales = "free_x") +
   scale_x_log10(expand = expansion(mult = c(0.05, 0.55))) +
-  labs(x = "Rate ratio (cell level) or odds ratio (woman level), log scale, 95% CI",
+  labs(x = "Rate ratio (cell level, 95% credible interval) or odds ratio (woman level, 95% CI), log scale",
        y = NULL, title = "Distance was not associated with maternal deaths;\ncensus LGAs had more deaths",
-       caption = "Cell models: log surveyed-births offset, LGA-clustered SE.\nWoman-level model: 55,953 women aged 15-49, 89 deaths; EA cluster, LGA stratum, unweighted;\nadjusted for age group and settlement type.") +
+       caption = "Cell models: Bayesian Poisson, BYM2 spatial effect and LGA random intercept, log surveyed-births offset.\nWoman-level model: 55,953 women aged 15-49, 89 deaths; EA cluster, LGA stratum, unweighted;\nadjusted for age group and settlement type.") +
   theme_minimal(base_size = 11) +
   theme(panel.grid.minor = element_blank(), panel.grid.major.y = element_blank(),
         panel.grid.major.x = element_line(colour = GRID), strip.text = element_text(face = "bold", colour = INK, hjust = 0),
