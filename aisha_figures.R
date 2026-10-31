@@ -7,7 +7,7 @@ INK <- "#0b0b0b"; INK2 <- "#52514e"; GRID <- "#e6e5e1"
 BLUE <- "#2a78d6"; ORANGE <- "#eb6834"; GREY <- "#d9d8d3"
 thm <- theme_minimal(base_size = 11) + theme(
   panel.grid = element_blank(), axis.text = element_blank(), axis.title = element_blank(),
-  plot.title = element_text(face = "bold", colour = INK, size = 12),
+  plot.title = element_text(face = "bold", colour = INK, size = 12), plot.title.position = "plot", plot.caption.position = "plot",
   plot.subtitle = element_text(colour = INK2, size = 9.5), legend.position = "bottom",
   legend.title = element_text(colour = INK2, size = 9), legend.text = element_text(colour = INK2, size = 9),
   plot.caption = element_text(colour = INK2, size = 8, hjust = 0))
@@ -63,22 +63,25 @@ f5 <- ggplot(fd, aes(est, spec)) +
         axis.title.x = element_text(colour = INK2, size = 9), plot.caption = element_text(colour = INK2, size = 8, hjust = 0))
 ggsave(file.path(OUT, "fig5_forest_plot.png"), f5, width = 8, height = 5.5, dpi = 300, bg = "white")
 
-# ---- Supplementary Figure S1: IDEAMAPS extent ----
+# ---- Supplementary Figure S1: IDEAMAPS extent (deaths shown as counts per 5 km cell, not as points) ----
 e <- read.csv("../dataset-outputs.csv") %>% st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>% st_transform(32632)
 hull <- st_convex_hull(st_union(e))
 va <- read.csv("combined_points_n116.csv") %>% filter(!is.na(Lat)) %>%
   st_as_sf(coords = c("Lng", "Lat"), crs = 4326) %>% st_transform(32632)
-va$inside <- lengths(st_intersects(va, hull)) > 0
+n_inside <- sum(lengths(st_intersects(va, hull)) > 0); n_all <- nrow(va)
+grid <- st_sf(geometry = st_make_grid(kano, cellsize = 5000)) %>% st_intersection(kano)
+grid$deaths <- lengths(st_intersects(grid, va))
+grid <- grid %>% filter(deaths > 0) %>% mutate(dcat = cut(deaths, c(0, 1, 2, Inf), labels = c("1", "2", "3 or more")))
 fs1 <- ggplot() +
   geom_sf(data = kano, fill = "#fcfcfb", colour = "#9b9a94", linewidth = 0.3) +
   geom_sf(data = lgas, fill = NA, colour = "#cfcec8", linewidth = 0.15) +
   geom_sf(data = hull, fill = "#9ec5f2", colour = BLUE, alpha = 0.55, linewidth = 0.4) +
-  geom_sf(data = va, aes(shape = inside), colour = INK, size = 1.4, fill = "white") +
-  scale_shape_manual(values = c("TRUE" = 19, "FALSE" = 1), labels = c("TRUE" = "Inside IDEAMAPS extent", "FALSE" = "Outside"),
-                     name = "Recorded maternal death") +
+  geom_sf(data = grid, aes(fill = dcat), colour = "white", linewidth = 0.2) +
+  scale_fill_manual(values = c("1" = "#f6b08f", "2" = ORANGE, "3 or more" = "#9a3412"),
+                    name = "Recorded maternal deaths per 5 km cell") +
   labs(title = "IDEAMAPS EmOC deprivation covers metropolitan Kano only",
-       subtitle = sprintf("Blue area: extent of IDEAMAPS points (about 9%% of the state). %d of %d death locations fall inside it.",
-                          sum(va$inside), nrow(va)),
-       caption = "Death locations: verbal-autopsy GPS points (retrospective and prospective, n = 115 with coordinates).") + thm
+       subtitle = sprintf("Blue area: extent of IDEAMAPS points (about 9%% of the state).\n%d of %d deaths with coordinates fall inside it.",
+                          n_inside, n_all),
+       caption = "Deaths are counted per 5 km grid cell (retrospective and prospective, n = 115 with coordinates);\nindividual locations are not shown.") + thm
 ggsave(file.path(OUT, "figS1_ideamaps_extent.png"), fs1, width = 7.5, height = 7.5, dpi = 300, bg = "white")
 cat("done\n")
